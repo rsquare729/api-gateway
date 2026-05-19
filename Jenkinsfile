@@ -7,54 +7,95 @@ pipeline {
 
     environment {
         PATH = "/usr/local/bin:${env.PATH}"
-        IMAGE_NAME = "rrdocker729/api-gateway:v1"
+
+        IMAGE_NAME = "rrdocker729/api-gateway"
+        IMAGE_TAG = "v${BUILD_NUMBER}"
+        CONTAINER_NAME = "api-gateway"
     }
 
     stages {
 
         stage('Build JAR') {
             steps {
-                sh 'mvn clean package'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $IMAGE_NAME .'
+                sh '''
+                docker buildx build \
+                --platform linux/amd64 \
+                --load \
+                -t $IMAGE_NAME:$IMAGE_TAG .
+                '''
             }
         }
 
         stage('Docker Login') {
-		    steps {
-		        withCredentials([usernamePassword(
-		            credentialsId: 'dockerhub-creds',
-		            usernameVariable: 'DOCKER_USER',
-		            passwordVariable: 'DOCKER_PASS'
-		        )]) {
-		
-		            sh """
-		            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-		            """
-		        }
-		    }
-		}
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+
+                    sh '''
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    '''
+                }
+            }
+        }
 
         stage('Push Docker Image') {
             steps {
-                sh 'docker push $IMAGE_NAME'
+                sh '''
+                docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
+
+                docker push $IMAGE_NAME:$IMAGE_TAG
+                docker push $IMAGE_NAME:latest
+                '''
             }
         }
 
         stage('Deploy Container') {
             steps {
                 sh '''
-                docker rm -f api-gateway-container || true
+                docker rm -f $CONTAINER_NAME || true
 
-                docker run -d -p 9090:9090 \
-                --name api-gateway-container \
-                $IMAGE_NAME
+                docker run -d \
+                -p 9090:9090 \
+                --name $CONTAINER_NAME \
+                $IMAGE_NAME:$IMAGE_TAG
                 '''
             }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                sleep 15
+
+                docker ps
+
+                curl http://localhost:9090/users || true
+                '''
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo 'Application deployed successfully!'
+        }
+
+        failure {
+            echo 'Pipeline failed!'
+        }
+
+        always {
+            sh 'docker image prune -f || true'
         }
     }
 }
