@@ -7,26 +7,29 @@ spring:
 
   cloud:
     gateway:
-      server:
-        webflux:
-          discovery:
-            locator:
-              enabled: true
-              lower-case-service-id: true
 
-          routes:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
 
-            - id: user-service
-              uri: lb://USER-SERVICE
-              predicates:
-                - Path=/users,/users/**
+      routes:
 
-            - id: order-service
-              uri: lb://ORDER-SERVICE
-              predicates:
-                - Path=orders,/orders/**
+        - id: user-service
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/users,/users/**
+
+        - id: order-service
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/orders,/orders/**
 
 eureka:
+  instance:
+    prefer-ip-address: true
+    ip-address: 52.66.188.57
+
   client:
     service-url:
       defaultZone: http://52.66.188.57:8761/eureka
